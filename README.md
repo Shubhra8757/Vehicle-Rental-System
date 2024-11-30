@@ -2,7 +2,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime
 
 
 class VehicleRentalApp:
@@ -189,7 +189,6 @@ class VehicleRentalApp:
         ttk.Label(tab, text="Your Bookings:").pack(pady=10)
         self.bookings_list = tk.Listbox(tab)
         self.bookings_list.pack(fill=tk.BOTH)
-        self.load_bookings()
 
     def setup_rent_vehicle(self, tab):
         ttk.Label(tab, text="Rent Vehicle functionality will go here.").pack(pady=20)
@@ -216,8 +215,70 @@ class VehicleRentalApp:
 
         for vehicle in vehicles:
             self.vehicle_listbox.insert(tk.END, f"{vehicle[1]} - ₹{vehicle_prices[vehicle_type]} per day")
+
         conn.close()
 
+        # Select the vehicle after clicking on it
+        self.vehicle_listbox.bind("<Double-1>", self.select_vehicle)
+
+    def select_vehicle(self, event):
+        selection = self.vehicle_listbox.curselection()
+        if selection:
+            vehicle_info = self.vehicle_listbox.get(selection[0]).split(" - ")
+            self.selected_vehicle = vehicle_info[0]
+            self.vehicle_price = int(vehicle_info[1].split("₹")[1].split()[0])
+
+            self.rent_vehicle()
+
+    def rent_vehicle(self):
+        rent_window = tk.Toplevel(self.root)
+        rent_window.title("Rent Vehicle")
+        rent_window.geometry("400x300")
+
+        ttk.Label(rent_window, text=f"Rent {self.selected_vehicle}").pack(pady=10)
+
+        ttk.Label(rent_window, text="Enter Start Date (YYYY-MM-DD):").pack(pady=5)
+        self.start_date_entry = ttk.Entry(rent_window)
+        self.start_date_entry.pack(pady=5)
+
+        ttk.Label(rent_window, text="Enter End Date (YYYY-MM-DD):").pack(pady=5)
+        self.end_date_entry = ttk.Entry(rent_window)
+        self.end_date_entry.pack(pady=5)
+
+        ttk.Button(rent_window, text="Confirm Rental", command=lambda: self.confirm_rental(rent_window)).pack(pady=10)
+
+    def confirm_rental(self, rent_window):
+        start_date = self.start_date_entry.get()
+        end_date = self.end_date_entry.get()
+
+        try:
+            start_date_obj = datetime.strptime(start_date, "%Y-%m-%d")
+            end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
+        except ValueError:
+            messagebox.showerror("Error", "Invalid date format!")
+            return
+
+        if end_date_obj < start_date_obj:
+            messagebox.showerror("Error", "End date cannot be before start date!")
+            return
+
+        rental_days = (end_date_obj - start_date_obj).days
+        total_price = rental_days * self.vehicle_price
+
+        conn = sqlite3.connect('vehicle_rental.db')
+        c = conn.cursor()
+
+        c.execute("SELECT id FROM vehicles WHERE model = ?", (self.selected_vehicle,))
+        vehicle_id = c.fetchone()[0]
+
+        c.execute("INSERT INTO bookings (vehicle_id, customer_id, start_date, end_date, total_price, status, payment_status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                  (vehicle_id, self.current_user_id, start_date, end_date, total_price, 'confirmed', 'pending'))
+        conn.commit()
+
+        conn.close()
+
+        messagebox.showinfo("Success", f"Your vehicle has been booked! Total: ₹{total_price}")
+        rent_window.destroy()
     def load_bookings(self):
         self.bookings_list.delete(0, tk.END)
         conn = sqlite3.connect('vehicle_rental.db')
@@ -236,12 +297,14 @@ class VehicleRentalApp:
 
     def logout(self):
         self.main_frame.pack_forget()
-        self.setup_login()
         self.login_frame.pack(pady=20)
 
 
+# Main
 if __name__ == "__main__":
     root = tk.Tk()
     app = VehicleRentalApp(root)
     root.mainloop()
+
+
 
